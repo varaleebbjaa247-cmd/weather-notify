@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบพยากรณ์อากาศ ต.กกสะทอน & ระบบจัดการสิทธิ์</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #666; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
+        button { width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        button:hover { background-color: #218838; }
+        .admin-btn { background-color: #007bff; margin-top: 10px; }
+        .admin-btn:hover { background-color: #0069d9; }
+        .danger-btn { background-color: #dc3545; padding: 5px 10px; font-size: 12px; width: auto; }
+        .user-list { margin-top: 20px; border-collapse: collapse; width: 100%; }
+        .user-list th, .user-list td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- หน้าล็อกอินสมาชิก -->
+    <div id="loginSection">
+        <h2>🌦️ เข้าสู่ระบบแจ้งเตือนสภาพอากาศ</h2>
+        <div class="form-group">
+            <label>LINE User ID ของคุณ:</label>
+            <input type="text" id="userLineId" placeholder="กรอก LINE User ID">
+        </div>
+        <button onclick="userLogin()">เข้าสู่ระบบ</button>
+        <button class="admin-btn" onclick="showAdminLogin()">สำหรับผู้ดูแลระบบ (Admin)</button>
+    </div>
+
+    <!-- หน้าแสดงผลพยากรณ์อากาศเมื่อสมาชิกล็อกอินผ่าน -->
+    <div id="weatherSection" class="hidden">
+        <h2>🌤️ พยากรณ์อากาศ ต.กกสะทอน</h2>
+        <div id="weatherResult" style="padding: 15px; background: #e9ecef; border-radius: 8px; text-align: center; font-size: 18px;"></div>
+        <button onclick="logout()" style="margin-top: 15px; background-color: #6c757d;">ออกจากระบบ</button>
+    </div>
+
+    <!-- หน้าล็อกอินแอดมิน -->
+    <div id="adminLoginSection" class="hidden">
+        <h2>🔒 เข้าสู่ระบบผู้ดูแลระบบ</h2>
+        <div class="form-group">
+            <label>รหัสผ่านแอดมิน (ขึ้นต้นด้วย g...):</label>
+            <input type="password" id="adminPassword" placeholder="กรอกรหัสผ่าน g...">
+        </div>
+        <button class="admin-btn" onclick="adminLogin()">ยืนยันรหัสผ่าน</button>
+        <button onclick="showUserLogin()" style="margin-top: 10px; background-color: #6c757d;">กลับหน้าหลัก</button>
+    </div>
+
+    <!-- หน้าแดชบอร์ดจัดการผู้ใช้ (สำหรับแอดมิน) -->
+    <div id="adminDashboardSection" class="hidden">
+        <h2>⚙️ จัดการสิทธิ์ผู้ใช้งาน</h2>
+        <div class="form-group">
+            <label>LINE User ID ลูกค้า:</label>
+            <input type="text" id="newUserId" placeholder="เช่น U1234567890abcdef...">
+        </div>
+        <div class="form-group">
+            <label>ชื่อลูกค้า:</label>
+            <input type="text" id="newUserName" placeholder="เช่น คุณสมชาย">
+        </div>
+        <button onclick="addUser()">+ เพิ่มสิทธิ์ผู้ใช้งาน</button>
+
+        <h3>📋 รายชื่อผู้ได้รับสิทธิ์</h3>
+        <table class="user-list">
+            <thead>
+                <tr>
+                    <th>ชื่อ</th>
+                    <th>LINE User ID</th>
+                    <th>การจัดการ</th>
+                </tr>
+            </thead>
+            <tbody id="userTableBody"></tbody>
+        </table>
+        <button onclick="logout()" style="margin-top: 20px; background-color: #6c757d;">ออกจากระบบ Admin</button>
+    </div>
+</div>
+
+<script>
+    // 🔗 วาง Web App URL จาก Google Apps Script ที่ได้จาก Step 2 ตรงนี้
+    const SCRIPT_URL = "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL"; 
+    let currentAdminPass = "";
+
+    async function userLogin() {
+        const userId = document.getElementById("userLineId").value.trim();
+        if(!userId) return alert("กรุณากรอก LINE User ID");
+
+        const res = await fetch(SCRIPT_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "user_login", userId: userId })
+        });
+        const data = await res.json();
+
+        if(data.status === "success") {
+            document.getElementById("loginSection").classList.add("hidden");
+            document.getElementById("weatherSection").classList.remove("hidden");
+            loadWeather();
+        } else {
+            alert(data.message);
+        }
+    }
+
+    async function loadWeather() {
+        document.getElementById("weatherResult").innerText = "กำลังดึงข้อมูลสภาพอากาศ...";
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=17.06&longitude=101.10&daily=precipitation_probability_max&timezone=Asia%2FBangkok");
+        const data = await res.json();
+        const chance = data.daily.precipitation_probability_max[0];
+        
+        if(chance >= 60) {
+            document.getElementById("weatherResult").innerText = `☔ วันนี้มีโอกาสฝนตก ${chance}% (สูงกว่า 60%) คุณควรเอาร่มไปด้วยนะครับ!`;
+        } else {
+            document.getElementById("weatherResult").innerText = `☀️ วันนี้โอกาสฝนตกแค่ ${chance}% อากาศแจ่มใส ไม่ต้องพกร่มไปครับ`;
+        }
+    }
+
+    function showAdminLogin() {
+        document.getElementById("loginSection").classList.add("hidden");
+        document.getElementById("adminLoginSection").classList.remove("hidden");
+    }
+
+    function showUserLogin() {
+        document.getElementById("adminLoginSection").classList.add("hidden");
+        document.getElementById("loginSection").classList.remove("hidden");
+    }
+
+    async function adminLogin() {
+        const pass = document.getElementById("adminPassword").value.trim();
+        if(!pass.startsWith("g")) return alert("รหัสผ่านต้องขึ้นต้นด้วยตัว g เท่านั้น");
+
+        const res = await fetch(SCRIPT_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "admin_login", password: pass })
+        });
+        const data = await res.json();
+
+        if(data.status === "success") {
+            currentAdminPass = pass;
+            document.getElementById("adminLoginSection").classList.add("hidden");
+            document.getElementById("adminDashboardSection").classList.remove("hidden");
+            loadUsers();
+        } else {
+            alert(data.message);
+        }
+    }
+
+    async function loadUsers() {
+        const res = await fetch(SCRIPT_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "get_users", password: currentAdminPass })
+        });
+        const data = await res.json();
+        if(data.status === "success") {
+            const tbody = document.getElementById("userTableBody");
+            tbody.innerHTML = "";
+            data.users.forEach(u => {
+                tbody.innerHTML += `<tr>
+                    <td>${u.name}</td>
+                    <td>${u.userId}</td>
+                    <td><button class="danger-btn" onclick="deleteUser('${u.userId}')">ลบ</button></td>
+                </tr>`;
+            });
+        }
+    }
+
+    async function addUser() {
+        const userId = document.getElementById("newUserId").value.trim();
+        const name = document.getElementById("newUserName").value.trim();
+        if(!userId || !name) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+
+        const res = await fetch(SCRIPT_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "add_user", password: currentAdminPass, userId: userId, name: name })
+        });
+        const data = await res.json();
+        alert(data.message);
+        document.getElementById("newUserId").value = "";
+        document.getElementById("newUserName").value = "";
+        loadUsers();
+    }
+
+    async function deleteUser(userId) {
+        if(!confirm("ยืนยันที่จะลบสิทธิ์ผู้ใช้นี้หรือไม่?")) return;
+        const res = await fetch(SCRIPT_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "delete_user", password: currentAdminPass, userId: userId })
+        });
+        const data = await res.json();
+        alert(data.message);
+        loadUsers();
+    }
+
+    function logout() {
+        location.reload();
+    }
+</script>
+</body>
+</html>
